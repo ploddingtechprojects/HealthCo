@@ -1,47 +1,45 @@
-name: Auto-Extract RARs + Deploy .NET 9
-on: [push]
+name: Auto Deploy
+
+on:
+  push:
+    branches:
+      - main  # change to your deployment branch
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
-      - uses: appleboy/ssh-action@v1.0.0
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js (if frontend uses Node)
+        uses: actions/setup-node@v3
         with:
-          host: ${{ secrets.GCP_VM_IP }}
-          username: ${{ secrets.GCP_VM_USER }}
-          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
-          script: |
-            # Install if missing
-            sudo apt update && sudo apt install -y unrar dotnet-runtime-9.0
-            
-            # Stop services
-            sudo nginx -s stop || true
-            sudo pkill -f dotnet || true
-            
-            # Clear old files
-            sudo rm -rf /var/www/html/* /home/dev_techplodding/api/*
-            
-            # Create temp dir + copy RARs
-            mkdir -p /tmp/deploy
-            cp -r * /tmp/deploy/
-            
-            cd /tmp/deploy
-            
-            # AUTO-EXTRACT Frontend (dist.rar → static files)
-            echo "Extracting dist.rar..."
-            unrar x dist.rar /var/www/html/ || echo "Frontend extracted"
-            
-            # AUTO-EXTRACT Backend (.NET publish)
-            echo "Extracting .NET API..."
-            unrar x BookAppointmentPublish08122025new.rar /home/dev_techplodding/api/
-            
-            # Start .NET 9 API
-            cd /home/dev_techplodding/api
-            sudo pkill -f dotnet || true
-            nohup dotnet BookAppointment.dll --urls="http://*:5000" > /var/log/dotnet.log 2>&1 &
-            
-            # Permissions + NGINX restart
-            sudo chown -R www-data:www-data /var/www/html
-            sudo nginx && sudo nginx -s reload
-            
-            echo "✅ React + .NET 9 deployed!"
-            curl -f http://localhost:5000/health || echo "API check failed"
+          node-version: '20'
+
+      - name: Build frontend
+        run: |
+          cd frontend
+          npm install
+          npm run build
+
+      - name: Deploy frontend
+        run: |
+          # Example: copy build to NGINX folder
+          sudo rm -rf /var/www/html/*
+          sudo cp -r frontend/dist/* /var/www/html/
+          sudo systemctl reload nginx
+
+      - name: Deploy backend
+        run: |
+          cd backend
+          # install dependencies
+          npm install
+          # stop previous process (if using pm2)
+          pm2 stop healthco-backend || true
+          # start backend
+          pm2 start server.js --name healthco-backend
+
+      - name: Health check
+        run: |
+          curl -f http://localhost || exit 1

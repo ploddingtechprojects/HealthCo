@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: self-hosted
+
     steps:
       # 1️⃣ Checkout the repo
       - name: Checkout Code
@@ -19,19 +20,18 @@ jobs:
           echo "Deploying frontend..."
           cd frontend
 
-          # Remove old frontend files
-          sudo rm -rf /var/www/html/*
-
-          # Install unrar safely
+          # Install unrar if missing
           if ! command -v unrar &> /dev/null; then
             echo "Installing unrar..."
-            # Enable non-free and contrib repositories
             sudo sed -i 's/main/main contrib non-free/' /etc/apt/sources.list
             sudo apt-get update
             sudo apt-get install -y unrar || sudo apt-get install -y unrar-free
           fi
 
-          # Extract dist.rar to NGINX folder
+          # Remove old frontend files
+          sudo rm -rf /var/www/html/*
+
+          # Extract dist.rar
           if [ -f dist.rar ]; then
             echo "Extracting frontend files..."
             sudo unrar x dist.rar /var/www/html/ || sudo unrar-free x dist.rar /var/www/html/
@@ -39,27 +39,69 @@ jobs:
             echo "dist.rar not found, skipping extraction"
           fi
 
-          # Reload NGINX to serve new frontend
+          # Reload NGINX
           sudo systemctl reload nginx
-
           echo "Frontend deployed successfully!"
 
-      # 3️⃣ Deploy Backend
+      # 3️⃣ Deploy Backend (.NET 9 Kestrel)
       - name: Deploy Backend
         run: |
-          echo "Deploying backend..."
+          echo "Deploying .NET 9 backend..."
           cd backend
-          if [ -f package.json ]; then
-            npm install
-            pm2 stop healthco-backend || true
-            pm2 start server.js --name healthco-backend
-          else
-            pm2 stop healthco-backend || true
-            pm2 start BookAppointmentPublish08122026.js --name healthco-backend
+
+          # Install unrar if missing
+          if ! command -v unrar &> /dev/null; then
+            echo "Installing unrar..."
+            sudo sed -i 's/main/main contrib non-free/' /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install -y unrar || sudo apt-get install -y unrar-free
           fi
+
+          # Remove previous backend folder
+          rm -rf ./publish
+          mkdir -p ./publish
+
+          # Extract backend RAR
+          BACKEND_RAR=$(ls *.rar | head -n 1)
+          if [ -f "$BACKEND_RAR" ]; then
+            echo "Extracting backend file $BACKEND_RAR..."
+            unrar x "$BACKEND_RAR" ./publish/ || unrar-free x "$BACKEND_RAR" ./publish/
+          else
+            echo "No backend RAR found!"
+            exit 1
+          fi
+
+          cd publish
+
+          # Install .NET SDK if missing
+          if ! command -v dotnet &> /dev/null; then
+            echo "Installing .NET SDK..."
+            wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh
+            chmod +x dotnet-install.sh
+            ./dotnet-install.sh --channel 9.0
+            export PATH=$HOME/.dotnet:$PATH
+          fi
+
+          # Find DLL to run
+          BACKEND_DLL=$(ls *.dll | head -n 1)
+          if [ -z "$BACKEND_DLL" ]; then
+            echo "No DLL found in backend!"
+            exit 1
+          fi
+
+          # Stop any previous backend process
+          if pgrep -f "dotnet .*${BACKEND_DLL}"; then
+            echo "Stopping previous backend..."
+            pkill -f "dotnet .*${BACKEND_DLL}"
+          fi
+
+          # Start backend using Kestrel
+          nohup dotnet "$BACKEND_DLL" > backend.log 2>&1 &
+          echo "Backend deployed successfully!"
 
       # 4️⃣ Health Check
       - name: Health Check
         run: |
-          echo "Checking application health..."
-          curl -f http://localhost || exit 1
+          echo "Checking backend health..."
+          sleep 5
+          curl -f http://localhost:5000/health || { echo "Health check failed!"; exit 1; }

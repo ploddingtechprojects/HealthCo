@@ -1,61 +1,20 @@
-name: Deploy Frontend & Backend to GCP VM
-
-on:
-  push:
-    branches:
-      - main
-
+name: Deploy to GCP
+on: [push]
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-    # 1️⃣ Checkout code
-    - name: Checkout repository
-      uses: actions/checkout@v4
-
-    # 2️⃣ Copy Frontend build files
-    - name: Deploy Frontend
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USER }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        source: "frontend/build/*"
-        target: "${{ secrets.APP_ROOT }}/frontend"
-        strip_components: 2
-
-    # 3️⃣ Copy Backend build files
-    - name: Deploy Backend
-      uses: appleboy/scp-action@v0.1.7
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USER }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        source: "backend/*"
-        target: "${{ secrets.APP_ROOT }}/backend"
-        strip_components: 1
-
-    # 4️⃣ Restart backend service
-    - name: Restart Backend Service
-      uses: appleboy/ssh-action@v1
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USER }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        script: |
-          # Node backend (PM2)
-          pm2 restart healthco-api || pm2 start ${{ secrets.APP_ROOT }}/backend/index.js --name healthco-api
-
-          # OR .NET backend (systemd)
-          sudo systemctl restart healthco-api
-
-    # 5️⃣ Reload web server
-    - name: Reload Nginx
-      uses: appleboy/ssh-action@v1
-      with:
-        host: ${{ secrets.VM_HOST }}
-        username: ${{ secrets.VM_USER }}
-        key: ${{ secrets.VM_SSH_KEY }}
-        script: |
-          sudo systemctl reload nginx
+      - uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.GCP_VM_IP }}
+          username: ${{ secrets.GCP_VM_USER }}
+          key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          script: |
+            cd /tmp
+            rm -rf * .*
+            echo "Deploying..." > /var/www/html/index.html
+            sudo rm -rf /var/www/html/*
+            sudo chown dev_techplodding:dev_techplodding /var/www/html
+            cp -r * /var/www/html/ || true
+            sudo chown -R www-data:www-data /var/www/html
+            sudo nginx -s reload

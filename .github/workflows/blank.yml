@@ -1,6 +1,5 @@
 name: Auto Deploy HealthCo
 
-# Trigger deployment on push to main branch
 on:
   push:
     branches:
@@ -19,27 +18,42 @@ jobs:
         run: |
           echo "Deploying frontend..."
           cd frontend
+
           # Remove old frontend files
           sudo rm -rf /var/www/html/*
-          # Install unrar if not installed
-          sudo apt-get update && sudo apt-get install -y unrar
+
+          # Install unrar safely
+          if ! command -v unrar &> /dev/null; then
+            echo "Installing unrar..."
+            # Enable non-free and contrib repositories
+            sudo sed -i 's/main/main contrib non-free/' /etc/apt/sources.list
+            sudo apt-get update
+            sudo apt-get install -y unrar || sudo apt-get install -y unrar-free
+          fi
+
           # Extract dist.rar to NGINX folder
-          sudo unrar x dist.rar /var/www/html/
+          if [ -f dist.rar ]; then
+            echo "Extracting frontend files..."
+            sudo unrar x dist.rar /var/www/html/ || sudo unrar-free x dist.rar /var/www/html/
+          else
+            echo "dist.rar not found, skipping extraction"
+          fi
+
           # Reload NGINX to serve new frontend
           sudo systemctl reload nginx
+
+          echo "Frontend deployed successfully!"
 
       # 3️⃣ Deploy Backend
       - name: Deploy Backend
         run: |
           echo "Deploying backend..."
           cd backend
-          # If backend has package.json, install dependencies
           if [ -f package.json ]; then
             npm install
             pm2 stop healthco-backend || true
             pm2 start server.js --name healthco-backend
           else
-            # If backend is single JS file
             pm2 stop healthco-backend || true
             pm2 start BookAppointmentPublish08122026.js --name healthco-backend
           fi

@@ -1,4 +1,4 @@
-name: Deploy to GCP
+name: Auto-Extract RARs + Deploy .NET 9
 on: [push]
 jobs:
   deploy:
@@ -10,11 +10,38 @@ jobs:
           username: ${{ secrets.GCP_VM_USER }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
           script: |
-            cd /tmp
-            rm -rf * .*
-            echo "Deploying..." > /var/www/html/index.html
-            sudo rm -rf /var/www/html/*
-            sudo chown dev_techplodding:dev_techplodding /var/www/html
-            cp -r * /var/www/html/ || true
+            # Install if missing
+            sudo apt update && sudo apt install -y unrar dotnet-runtime-9.0
+            
+            # Stop services
+            sudo nginx -s stop || true
+            sudo pkill -f dotnet || true
+            
+            # Clear old files
+            sudo rm -rf /var/www/html/* /home/dev_techplodding/api/*
+            
+            # Create temp dir + copy RARs
+            mkdir -p /tmp/deploy
+            cp -r * /tmp/deploy/
+            
+            cd /tmp/deploy
+            
+            # AUTO-EXTRACT Frontend (dist.rar → static files)
+            echo "Extracting dist.rar..."
+            unrar x dist.rar /var/www/html/ || echo "Frontend extracted"
+            
+            # AUTO-EXTRACT Backend (.NET publish)
+            echo "Extracting .NET API..."
+            unrar x BookAppointmentPublish08122025new.rar /home/dev_techplodding/api/
+            
+            # Start .NET 9 API
+            cd /home/dev_techplodding/api
+            sudo pkill -f dotnet || true
+            nohup dotnet BookAppointment.dll --urls="http://*:5000" > /var/log/dotnet.log 2>&1 &
+            
+            # Permissions + NGINX restart
             sudo chown -R www-data:www-data /var/www/html
-            sudo nginx -s reload
+            sudo nginx && sudo nginx -s reload
+            
+            echo "✅ React + .NET 9 deployed!"
+            curl -f http://localhost:5000/health || echo "API check failed"

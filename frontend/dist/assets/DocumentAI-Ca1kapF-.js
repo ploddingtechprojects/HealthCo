@@ -1,0 +1,1 @@
+import{j as o,al as e}from"./index-DyR0ftVW.js";import{C as t}from"./ComingSoon-D3T4fqq6.js";const n=()=>o.jsx(t,{icon:e.DocumentAI,title:"Document AI",description:"Advanced document processing and AI-powered insights for your healthcare practice"});export{n as default};

@@ -9,25 +9,32 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      # FRONTEND
+      # ======================
+      # FRONTEND DEPLOY
+      # ======================
       - name: Deploy Frontend
         run: |
           sudo rm -rf /var/www/html/*
-          sudo unrar x frontend/dist.rar /var/www/html/
+          sudo cp -r frontend/dist/* /var/www/html/
           sudo systemctl reload nginx
 
-      # BACKEND
+      # ======================
+      # BACKEND DEPLOY (.NET)
+      # ======================
       - name: Deploy Backend
         run: |
           sudo rm -rf /opt/healthco/backend
           sudo mkdir -p /opt/healthco/backend
-          sudo unrar x backend/*.rar /opt/healthco/backend
+          sudo cp -r backend/BookAppointmentPublish/* /opt/healthco/backend/
           sudo chown -R dev_techplodding:dev_techplodding /opt/healthco
           sudo systemctl restart healthco-backend
 
+      # ======================
       # HEALTH CHECK
+      # ======================
       - name: Health Check
         run: |
           sleep 5
